@@ -1,6 +1,7 @@
 #ifndef TIMER
 #define TIMER
 
+#include <functional>
 #include <time.h>
 #include <netinet/in.h>
 
@@ -22,7 +23,8 @@ public:
     TimerNode* prev;
     TimerNode* next;
     cli_data* user_data;
-    void (*callback)(cli_data*);
+    //void (*callback)(cli_data*);
+    std::function<void(cli_data*)> callback;
 };
 
 class Timer
@@ -30,11 +32,11 @@ class Timer
 public:
     Timer() : head(nullptr), tail(nullptr) {}
     ~Timer() {
-        TimerNode* tmp = head;
-        while (tmp) {
-            head = tmp->next;
-            delete tmp;
-            tmp = head;
+        TimerNode* dummy = head;
+        while (dummy) {
+            head = dummy->next;
+            delete dummy;
+            dummy = head;
         }
     }
 private:
@@ -92,8 +94,8 @@ public:
      */    
     void adjust_timer(TimerNode* timer) {
         if(!timer)  return;
-        TimerNode* tmp = timer->next;
-        if(!tmp || timer->overdue <= tmp->overdue)
+        TimerNode* dummy = timer->next;
+        if(!dummy || timer->overdue <= dummy->overdue)
             return;
         if(timer == head) {
             head = head->next;
@@ -106,6 +108,23 @@ public:
             add_timer_from(timer, timer->next);
         }
     }
+    /**
+     * @description: 当连接超时时，更新链表 TODO
+     */    
+    void timeout() {
+        if(!head)   return;
+        time_t cur = time(NULL);
+        TimerNode* dummy = head;
+        while(dummy) {
+            if(cur < dummy->overdue)
+                break;
+            dummy->callback(dummy->user_data);
+            head = dummy->next;
+            if(head)    head->prev = nullptr;
+            delete dummy;
+            dummy = head->next;
+        }
+    }
 private:
     /**
      * @description: 将定时器 timer 插入到升序链表中（从 start 节点开始遍历）
@@ -114,19 +133,19 @@ private:
      */    
     void add_timer_from(TimerNode* timer, TimerNode* start) {
         TimerNode* pre = start;
-        TimerNode* tmp = pre->next;
-        while(tmp) {
-            if(timer->overdue < tmp->overdue) {
+        TimerNode* dummy = pre->next;
+        while(dummy) {
+            if(timer->overdue < dummy->overdue) {
                 pre->next = timer;
-                timer->next = tmp;
-                tmp->prev = timer;
+                timer->next = dummy;
+                dummy->prev = timer;
                 timer->prev = pre;
                 return;
             }
-            pre = tmp;
-            tmp = tmp->next;
+            pre = dummy;
+            dummy = dummy->next;
         }
-        if(!tmp) {
+        if(!dummy) {
             pre->next = timer;
             timer->prev = pre;
             timer->next = nullptr;

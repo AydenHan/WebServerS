@@ -15,7 +15,7 @@
 #include "timer/timer.h"
 
 #define MAX_FD 65536            // 最大文件描述符
-#define MAX_EVENT 10000     // 最大事件数
+#define MAX_EVENT 10000         // 最大事件数
 #define TIMESLOT 5              // 最小超时单位
 
 static int epollfd = 0;         // 全局epoll实例
@@ -41,7 +41,15 @@ void timer_handler(cli_data* data) {
     if(!data)   return;
     epoll_ctl(epollfd, EPOLL_CTL_DEL, data->sockfd, nullptr);
     close(data->sockfd);
-    //
+    // TODO
+}
+
+/**
+ * @description: 超时处理函数，更新链表，并重新计时
+ */
+void timeout_handler() {
+    timerList.timeout();
+    alarm(TIMESLOT);
 }
 
 
@@ -96,7 +104,7 @@ int main(int argc, char *argv[])
     std::array<cli_data, MAX_FD> cli_timers;
 
     bool stop_server = false;
-    bool timeout = false;
+    bool time_out = false;
     alarm(TIMESLOT);                        // 设置超时闹钟，并开始运行服务器
     while(!stop_server) 
     {
@@ -143,18 +151,38 @@ int main(int argc, char *argv[])
             // 处理信号
             else if(cur_fd == pipefd[0] && (events[i].events & EPOLLIN))
             {
-                
+                char msg[1024];
+                int ret = recv(pipefd[0], msg, sizeof(msg), 0);
+                if(ret > 0) {
+                    for(int i = 0; i < ret; ++i) {
+                        if(msg[i] == SIGALRM) {
+                            time_out = true;
+                            break;
+                        }
+                        else if(msg[i] == SIGTERM) {
+                            stop_server = true;
+                            break;
+                        }
+                    }
+                }
+                else    continue;
             }
             // 接收到数据，读socket
             else if(events[i].events & EPOLLIN)
             {
+                TimerNode* timer = cli_timers[cur_fd].timer;
 
             }
             // 有数据待发送，写socket
             else if(events[i].events & EPOLLOUT)
             {
+                TimerNode* timer = cli_timers[cur_fd].timer;
                 
             }
+        }
+        if(time_out) {
+            timeout_handler();
+            time_out = false;
         }
     }
     close(epollfd);
